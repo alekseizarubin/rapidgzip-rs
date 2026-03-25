@@ -8,6 +8,14 @@ fn build_from_source(capi_dir: &Path, target: &str) -> PathBuf {
         config.cxxflag("/EHsc");
     }
 
+    if target.contains("windows-msvc") {
+        // Keep the native dependency on the Windows path in Release mode.
+        // The upstream ISA-L/zlib-ng stack is validated in Release in our CI,
+        // while Cargo's default debug profile would otherwise drive a Debug
+        // multi-config CMake build here.
+        config.profile("Release");
+    }
+
     config.build()
 }
 
@@ -58,23 +66,36 @@ fn emit_feature_cfgs(has_rpmalloc: bool, has_isal: bool, bundled_zlib: bool) {
 }
 
 fn emit_source_build_links(dst: &Path, target: &str) {
+    let librapidarchive_src_dir = dst.join("build/librapidarchive/src");
+    let librapidarchive_release_dir = librapidarchive_src_dir.join("Release");
+    let isal_build_dir = dst.join("build/_deps/isal_project-build");
+    let isal_release_dir = isal_build_dir.join("Release");
+
     emit_link_search(&dst.join("lib"));
     emit_link_search(&dst.join("build"));
-    emit_link_search(&dst.join("build/librapidarchive/src"));
-    emit_link_search(&dst.join("build/_deps/isal_project-build"));
+    emit_link_search(&librapidarchive_src_dir);
+    emit_link_search(&librapidarchive_release_dir);
+    emit_link_search(&isal_build_dir);
+    emit_link_search(&isal_release_dir);
 
-    let bundled_zlib = dst
-        .join("build/librapidarchive/src")
+    let bundled_zlib = librapidarchive_src_dir
         .join(static_lib_filename("zlibstatic", target))
-        .exists();
-    let has_rpmalloc = dst
-        .join("build/librapidarchive/src")
+        .exists()
+        || librapidarchive_release_dir
+            .join(static_lib_filename("zlibstatic", target))
+            .exists();
+    let has_rpmalloc = librapidarchive_src_dir
         .join(static_lib_filename("rpmalloc", target))
-        .exists();
-    let has_isal = dst
-        .join("build/_deps/isal_project-build")
+        .exists()
+        || librapidarchive_release_dir
+            .join(static_lib_filename("rpmalloc", target))
+            .exists();
+    let has_isal = isal_build_dir
         .join(static_lib_filename("isal", target))
-        .exists();
+        .exists()
+        || isal_release_dir
+            .join(static_lib_filename("isal", target))
+            .exists();
 
     emit_feature_cfgs(has_rpmalloc, has_isal, bundled_zlib);
 
