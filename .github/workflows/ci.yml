@@ -45,6 +45,16 @@ jobs:
         run: |
           choco install -y nasm
 
+      - name: Ensure NASM is in PATH (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          echo 'C:\Program Files\NASM' >> $env:GITHUB_PATH
+
+      - name: Verify NASM installation (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          nasm -v
+
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
 
