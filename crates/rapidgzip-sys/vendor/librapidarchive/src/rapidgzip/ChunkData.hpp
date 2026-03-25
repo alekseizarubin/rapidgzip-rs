@@ -9,6 +9,7 @@
 #include <vector>
 
 #include <core/FasterVector.hpp>
+#include <core/FileUtils.hpp>
 #include <rapidgzip/CompressedVector.hpp>
 #include <rapidgzip/DecodedData.hpp>
 #include <rapidgzip/gzip/crc32.hpp>
