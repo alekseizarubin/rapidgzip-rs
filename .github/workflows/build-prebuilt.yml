@@ -39,12 +39,12 @@ jobs:
             target: x86_64-pc-windows-msvc
             artifact_dir: x86_64-pc-windows-msvc
             lib_name: rapidgzip-capi.lib
-            with_isal: ON
+            with_isal: OFF
           - os: windows-11-arm
             target: aarch64-pc-windows-msvc
             artifact_dir: aarch64-pc-windows-msvc
             lib_name: rapidgzip-capi.lib
-            with_isal: ON
+            with_isal: OFF
 
     steps:
       - name: Checkout repository
