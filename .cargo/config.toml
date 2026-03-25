@@ -1,0 +1,4 @@
+# Avoid hard depending on lld on Linux hosts where the default linker works but
+# Cargo/rustc may otherwise try to enable lld-specific behavior.
+[target.x86_64-unknown-linux-gnu]
+rustflags = ["-Clinker-features=-lld"]

@@ -1,0 +1,38 @@
+[package]
+name = "rapidgzip-sys"
+version = "0.1.0"
+edition = "2021"
+description = "Raw FFI bindings for rapidgzip"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/alekseizarubin/rapidgzip-rs"
+homepage = "https://github.com/alekseizarubin/rapidgzip-rs"
+documentation = "https://docs.rs/rapidgzip-sys"
+readme = "README.md"
+keywords = ["gzip", "ffi", "compression", "native"]
+categories = ["compression", "external-ffi-bindings"]
+links = "rapidgzip-capi"
+include = [
+    "Cargo.toml",
+    "README.md",
+    "build.rs",
+    "src/**",
+    "native/rapidgzip-capi/**",
+    "vendor/librapidarchive/CMakeLists.txt",
+    "vendor/librapidarchive/LICENSE-APACHE",
+    "vendor/librapidarchive/LICENSE-MIT",
+    "vendor/librapidarchive/README.md",
+    "vendor/librapidarchive/src/**",
+]
+
+[lib]
+name = "rapidgzip_sys"
+
+[dependencies]
+libc = "0.2"
+
+[build-dependencies]
+cc = "1.0"
+cmake = "0.1"
+
+[package.metadata.docs.rs]
+rustdoc-args = ["--cfg", "docsrs"]

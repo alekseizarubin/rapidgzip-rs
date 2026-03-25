@@ -1,0 +1,116 @@
+name: Build Prebuilt Binaries
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build for ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            artifact_dir: x86_64-unknown-linux-gnu
+            lib_name: librapidgzip-capi.a
+            with_isal: ON
+          - os: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+            artifact_dir: aarch64-unknown-linux-gnu
+            lib_name: librapidgzip-capi.a
+            with_isal: ON
+          - os: macos-15-intel
+            target: x86_64-apple-darwin
+            artifact_dir: x86_64-apple-darwin
+            lib_name: librapidgzip-capi.a
+            with_isal: OFF
+          - os: macos-15
+            target: aarch64-apple-darwin
+            artifact_dir: aarch64-apple-darwin
+            lib_name: librapidgzip-capi.a
+            with_isal: OFF
+            cmake_osx_architectures: arm64
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            artifact_dir: x86_64-pc-windows-msvc
+            lib_name: rapidgzip-capi.lib
+            with_isal: ON
+          - os: windows-11-arm
+            target: aarch64-pc-windows-msvc
+            artifact_dir: aarch64-pc-windows-msvc
+            lib_name: rapidgzip-capi.lib
+            with_isal: ON
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake build-essential zlib1g-dev nasm
+
+      - name: Install Dependencies (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          brew install -q nasm
+
+      - name: Install Dependencies (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          choco install -y nasm
+
+      - name: Configure CMake
+        shell: bash
+        run: |
+          EXTRA_ARGS=()
+          EXTRA_ARGS+=( -DCMAKE_BUILD_TYPE=Release )
+          EXTRA_ARGS+=( -DLIBRAPIDARCHIVE_WITH_ISAL=${{ matrix.with_isal }} )
+          if [[ -n "${{ matrix.cmake_osx_architectures || '' }}" ]]; then
+            EXTRA_ARGS+=( -DCMAKE_OSX_ARCHITECTURES=${{ matrix.cmake_osx_architectures }} )
+          fi
+          cmake -S crates/rapidgzip-sys/native/rapidgzip-capi -B build "${EXTRA_ARGS[@]}"
+
+      - name: Build
+        run: cmake --build build --config Release --target rapidgzip-capi
+
+      - name: Prepare Artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          OUT_DIR="output/${{ matrix.artifact_dir }}"
+          mkdir -p "$OUT_DIR"
+
+          copy_if_exists() {
+            local destination="$1"
+            shift
+            for candidate in "$@"; do
+              if [[ -f "$candidate" ]]; then
+                cp "$candidate" "$destination"
+                return 0
+              fi
+            done
+            return 1
+          }
+
+          copy_if_exists "$OUT_DIR"             "build/${{ matrix.lib_name }}"             "build/Release/${{ matrix.lib_name }}"
+
+          copy_if_exists "$OUT_DIR"             "build/librapidarchive/src/librpmalloc.a"             "build/librapidarchive/src/Release/rpmalloc.lib"             "build/librapidarchive/src/rpmalloc.lib"
+
+          copy_if_exists "$OUT_DIR"             "build/librapidarchive/src/libzlibstatic.a"             "build/librapidarchive/src/Release/zlibstatic.lib"             "build/librapidarchive/src/zlibstatic.lib"
+
+          if [[ "${{ matrix.with_isal }}" == "ON" ]]; then
+            copy_if_exists "$OUT_DIR"               "build/_deps/isal_project-build/libisal.a"               "build/_deps/isal_project-build/Release/isal.lib"               "build/_deps/isal_project-build/isal.lib"
+          fi
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: rapidgzip-prebuilt-${{ matrix.artifact_dir }}
+          path: output/${{ matrix.artifact_dir }}

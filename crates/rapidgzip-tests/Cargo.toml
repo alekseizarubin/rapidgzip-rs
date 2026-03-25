@@ -1,0 +1,12 @@
+[package]
+name = "rapidgzip-tests"
+version = "0.1.0"
+edition = "2021"
+description = "Integration tests for rapidgzip-rs"
+publish = false
+
+[dependencies]
+rapidgzip = { path = "../rapidgzip", features = ["native"] }
+
+[dev-dependencies]
+flate2 = "1.0"
