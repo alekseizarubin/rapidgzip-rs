@@ -4,7 +4,6 @@ project(rapidgzip-capi CXX)
 set(CMAKE_CXX_STANDARD 17)
 
 if(MSVC)
-    add_compile_options(/W3 /utf-8 /EHsc)
 endif()
 
 set(LIBRAPIDARCHIVE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../vendor/librapidarchive")

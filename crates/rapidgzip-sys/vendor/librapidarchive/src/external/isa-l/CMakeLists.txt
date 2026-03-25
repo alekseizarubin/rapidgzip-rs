@@ -72,8 +72,14 @@ endif()
 
 # Compiler and assembler setup
 if(CPU_X86_64)
-    # Configure NASM flags
-    set(CMAKE_ASM_NASM_FLAGS "-f elf64 -D LINUX")
+    # Configure NASM flags per platform. The x86_64 assembly sources contain
+    # dedicated win64 code paths and must not be forced through Linux ELF flags
+    # on MSVC builds.
+    if(WIN32)
+        set(CMAKE_ASM_NASM_FLAGS "-f win64")
+    else()
+        set(CMAKE_ASM_NASM_FLAGS "-f elf64 -D LINUX")
+    endif()
     set(CMAKE_ASM_NASM_INCLUDES "-I ${CMAKE_CURRENT_SOURCE_DIR}/include/")
     set(USE_NASM ON)
 elseif(CPU_AARCH64 OR CPU_RISCV64)
