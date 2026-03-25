@@ -52,17 +52,18 @@ if(NOT LIBRAPIDARCHIVE_USE_SYSTEM_ZLIB AND LIBRAPIDARCHIVE_USE_ZLIB_NG)
     project(zlibstatic C)
     add_library(zlibstatic STATIC)
     set(ZLIB_HOME "${CMAKE_CURRENT_SOURCE_DIR}/external/zlib-ng")
-    target_include_directories(zlibstatic SYSTEM INTERFACE ${ZLIB_HOME} ${CMAKE_CURRENT_BINARY_DIR}/zlib-ng)
-    target_include_directories(zlibstatic PUBLIC ${ZLIB_HOME} ${CMAKE_CURRENT_BINARY_DIR}/zlib-ng)
+    set(ZLIB_BINARY_INCLUDE_DIR "${CMAKE_CURRENT_BINARY_DIR}/zlib-ng")
+    target_include_directories(zlibstatic SYSTEM INTERFACE ${ZLIB_BINARY_INCLUDE_DIR} ${ZLIB_HOME})
+    target_include_directories(zlibstatic PUBLIC ${ZLIB_BINARY_INCLUDE_DIR} ${ZLIB_HOME})
 
     # Not working, see comment for Z_PREFIX.
     #set(ZLIB_SYMBOL_PREFIX LIBRAPIDARCHIVE_)
 
-    configure_file(${ZLIB_HOME}/zconf-ng.h.in ${ZLIB_HOME}/zconf-ng.h @ONLY)
-    configure_file(${ZLIB_HOME}/zconf.h.in ${ZLIB_HOME}/zconf.h @ONLY)
-    configure_file(${ZLIB_HOME}/zlib.h.in ${ZLIB_HOME}/zlib.h @ONLY)
-    #configure_file(${ZLIB_HOME}/zlib_name_mangling.h.in ${ZLIB_HOME}/zlib_name_mangling.h @ONLY)
-    configure_file(${ZLIB_HOME}/zlib_name_mangling.h.empty ${ZLIB_HOME}/zlib_name_mangling.h COPYONLY)
+    configure_file(${ZLIB_HOME}/zconf-ng.h.in ${ZLIB_BINARY_INCLUDE_DIR}/zconf-ng.h @ONLY)
+    configure_file(${ZLIB_HOME}/zconf.h.in ${ZLIB_BINARY_INCLUDE_DIR}/zconf.h @ONLY)
+    configure_file(${ZLIB_HOME}/zlib.h.in ${ZLIB_BINARY_INCLUDE_DIR}/zlib.h @ONLY)
+    #configure_file(${ZLIB_HOME}/zlib_name_mangling.h.in ${ZLIB_BINARY_INCLUDE_DIR}/zlib_name_mangling.h @ONLY)
+    configure_file(${ZLIB_HOME}/zlib_name_mangling.h.empty ${ZLIB_BINARY_INCLUDE_DIR}/zlib_name_mangling.h COPYONLY)
 
     target_sources(zlibstatic PRIVATE
         ${ZLIB_HOME}/cpu_features.c
