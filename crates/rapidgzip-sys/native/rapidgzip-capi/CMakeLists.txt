@@ -15,11 +15,10 @@ set(LIBRAPIDARCHIVE_BUILD_TOOLS OFF CACHE BOOL "" FORCE)
 set(LIBRAPIDARCHIVE_USE_SYSTEM_ZLIB OFF CACHE BOOL "" FORCE)
 set(LIBRAPIDARCHIVE_USE_ZLIB_NG ON CACHE BOOL "" FORCE)
 set(LIBRAPIDARCHIVE_WITH_RPMALLOC ON CACHE BOOL "" FORCE)
-# Keep the less portable ISA-L path off on the CMake targets that have shown
-# unstable CI behavior in this repository. Apple and Windows/MSVC still build
-# with zlib-ng and the rest of the native stack, but avoid the assembler-heavy
-# ISA-L dependency for reliability.
-if(APPLE OR MSVC)
+# Upstream currently disables ISA-L for macOS in release workflows because the
+# macOS path is not stable enough yet. Keep the Apple build reliable and use the
+# accelerated ISA-L path on the other targets.
+if(APPLE)
     set(LIBRAPIDARCHIVE_WITH_ISAL OFF CACHE BOOL "" FORCE)
 else()
     set(LIBRAPIDARCHIVE_WITH_ISAL ON CACHE BOOL "" FORCE)
