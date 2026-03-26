@@ -254,7 +254,11 @@ static inline size_t
 rpmalloc_clz(uintptr_t x) {
 #if ARCH_64BIT
 #if defined(_MSC_VER) && !defined(__clang__)
+#if defined(_M_ARM64) || defined(_M_ARM64EC)
+	return (size_t)_CountLeadingZeros64(x);
+#else
 	return (size_t)_lzcnt_u64(x);
+#endif
 #else
 	return (size_t)__builtin_clzll(x);
 #endif

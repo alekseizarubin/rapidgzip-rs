@@ -10,8 +10,8 @@ support for gzip, BGZF, parallel decompression, and index import/export.
 
 Companion repositories:
 
-- CLI: `https://github.com/alekseizarubin/rapidgzip-cli`
-- Benchmarks: `https://github.com/alekseizarubin/rapidgzip-benchmarks`
+- CLI: [rapidgzip-rs-cli](https://github.com/alekseizarubin/rapidgzip-rs-cli)
+- Benchmarks: [rapidgzip-rs-benchmarks](https://github.com/alekseizarubin/rapidgzip-rs-benchmarks)
 
 ## Features
 
