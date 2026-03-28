@@ -319,6 +319,11 @@ public:
                 static_cast<size_t>(
                     std::ceil( static_cast<double>( parallelization ) * static_cast<double>( m_chunkSizeInBytes )
                                / static_cast<double>( SinglePassFileReader::CHUNK_SIZE ) ) ) );
+            if ( ( singlePassFileReader->fileno() < 0 ) && ( m_fetcherParallelization > 1 ) ) {
+                /* Callback-backed sequential inputs can still need older compressed chunks while
+                 * parallel workers are active. Releasing them too early can corrupt decoding. */
+                m_releaseSinglePassBuffer = false;
+            }
             setKeepIndex( false );
         }
     }
@@ -630,7 +635,7 @@ public:
             const auto& [lock, file] = m_sharedFileReader->underlyingFile();
             // NOLINTNEXTLINE(clang-analyzer-cplusplus.NewDeleteLeaks)
             auto* const singlePassFileReader = dynamic_cast<SinglePassFileReader*>( file );
-            if ( singlePassFileReader != nullptr ) {
+            if ( ( singlePassFileReader != nullptr ) && m_releaseSinglePassBuffer ) {
                 /* Release only up to the beginning of the currently used chunk in order to theoretically enable
                  * to clear the full cache and then continue again. This effectively require a recomputation of
                  * the current chunk if it was not fully read yet. */
@@ -1519,6 +1524,7 @@ private:
     uint64_t m_verifiedCRC32Count{ 0 };
 
     size_t const m_fetcherParallelization;
+    bool m_releaseSinglePassBuffer{ true };
 
     std::function<std::shared_ptr<BlockFinder>( void )> const m_startBlockFinder;
 
