@@ -6,57 +6,58 @@ on:
   pull_request:
 
 jobs:
-  test-linux:
+  lint:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
 
       - name: Install native dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y cmake build-essential zlib1g-dev nasm
 
-      - name: Set up Rust
-        uses: dtolnay/rust-toolchain@stable
+      - name: Check formatting
+        run: cargo fmt --all -- --check
 
-      - name: Run workspace tests
-        run: cargo test --workspace
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
 
-  build-cross-smoke:
+  test:
     strategy:
       fail-fast: false
       matrix:
         include:
+          - os: ubuntu-latest
+            kind: test
           - os: macos-15
+            kind: test
           - os: windows-latest
+            kind: test
     runs-on: ${{ matrix.os }}
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Install native dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake build-essential zlib1g-dev nasm
 
       - name: Install native dependencies (macOS)
         if: runner.os == 'macOS'
-        run: |
-          brew install -q nasm
+        run: brew install -q nasm
 
       - name: Install native dependencies (Windows)
         if: runner.os == 'Windows'
         run: |
           choco install -y nasm
-
-      - name: Ensure NASM is in PATH (Windows)
-        if: runner.os == 'Windows'
-        run: |
           echo 'C:\Program Files\NASM' >> $env:GITHUB_PATH
 
-      - name: Verify NASM installation (Windows)
-        if: runner.os == 'Windows'
-        run: |
-          nasm -v
-
-      - name: Set up Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Build workspace
-        run: cargo build --workspace
+      - name: Run workspace tests
+        run: cargo test --workspace

@@ -10,3 +10,4 @@ rapidgzip = { path = "../rapidgzip", features = ["native"] }
 
 [dev-dependencies]
 flate2 = "1.0"
+tempfile = "3"

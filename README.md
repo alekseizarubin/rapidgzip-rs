@@ -17,9 +17,10 @@ Companion repositories:
 
 - gzip and BGZF decoding
 - path-based readers with native fast paths
-- callback-based readers for custom `Read + Seek` sources
+- callback-based readers for custom `Read + Seek + Send` sources (no `Sync` required)
 - cloneable callback readers for parallel decode paths
-- index import/export for random access workflows
+- index import from a file path or any `ReadSeek` source (e.g. an HTTP range reader)
+- index export with atomic write and symlink-safe replacement
 - vendored accelerated native backend based on `librapidarchive`
 
 ## Installation
@@ -28,14 +29,14 @@ High-level API:
 
 ```toml
 [dependencies]
-rapidgzip = "0.1.0"
+rapidgzip = "1.2.0"
 ```
 
 Low-level FFI:
 
 ```toml
 [dependencies]
-rapidgzip-sys = "0.1.0"
+rapidgzip-sys = "1.2.0"
 ```
 
 ## Build Requirements
@@ -85,9 +86,11 @@ More examples are available in
 - the published API currently exposes only the native backend
 - `Reader::seek(SeekFrom::End(_))` is not supported by the current ABI
 - `ReaderBuilder::open_reader` forces parallelism to `1` because generic readers
-  cannot be cloned into independent file handles
-- use `ReaderBuilder::open_cloneable_reader` when custom inputs should support
-  parallel decode paths
+  cannot be cloned into independent file handles; use `open_cloneable_reader`
+  when your source implements `Clone` and parallel decode is needed
+- `import_index_reader` and `import_index` accept any `Read + Seek + Send` source;
+  however the C++ backend must be able to seek within the index, so the source
+  must provide random access (e.g. a file or an HTTP range reader)
 
 ## Repository Layout
 

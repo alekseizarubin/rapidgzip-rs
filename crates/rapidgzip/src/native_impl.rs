@@ -80,15 +80,29 @@ impl From<ffi::rgz_status_t> for Error {
 }
 
 /// Trait object bound for callback-backed readers that implement `Read` and `Seek`.
-pub trait ReadSeek: Read + Seek + Send + Sync {}
-impl<T: Read + Seek + Send + Sync> ReadSeek for T {}
+///
+/// Only `Send` is required (not `Sync`) because the C++ backend calls callbacks
+/// sequentially — never from multiple threads simultaneously on the same handle.
+/// This means types like `BufReader<File>` (which is `Send` but not `Sync`) can
+/// be passed directly without wrapping.
+pub trait ReadSeek: Read + Seek + Send {}
+impl<T: Read + Seek + Send> ReadSeek for T {}
 
 /// Callback-backed reader that can be cloned into independent handles for parallel decoding.
-pub trait CloneableReadSeek: ReadSeek + Send + Sync {
+///
+/// `clone_box` is called by the C++ backend to create per-worker reader handles.
+/// Each clone is used independently; the C++ layer never shares a single clone
+/// between threads.
+///
+/// **Position semantics:** clones may start at the same position as the original
+/// or at position 0 — the exact behaviour depends on the implementation. The
+/// C++ backend always seeks each worker to its target offset before reading, so
+/// the starting position of a fresh clone does not affect correctness.
+pub trait CloneableReadSeek: ReadSeek + Send {
     fn clone_box(&self) -> Box<dyn CloneableReadSeek>;
 }
 
-impl<T: Read + Seek + Clone + Send + Sync + 'static> CloneableReadSeek for T {
+impl<T: Read + Seek + Clone + Send + 'static> CloneableReadSeek for T {
     fn clone_box(&self) -> Box<dyn CloneableReadSeek> {
         Box::new(self.clone())
     }
@@ -327,10 +341,7 @@ impl ReaderBuilder {
     ///
     /// Because generic readers cannot be cloned into independent handles, the
     /// native backend forces parallelism to `1` for this path.
-    pub fn open_reader<R: Read + Seek + Send + Sync + 'static>(
-        &self,
-        reader: R,
-    ) -> Result<Reader, Error> {
+    pub fn open_reader<R: Read + Seek + Send + 'static>(&self, reader: R) -> Result<Reader, Error> {
         let boxed_reader: Box<dyn ReadSeek> = Box::new(reader);
         let user_data = Box::into_raw(Box::new(boxed_reader)) as *mut c_void;
 
@@ -349,7 +360,7 @@ impl ReaderBuilder {
     ///
     /// Use this path when callback-backed readers should support parallel
     /// decompression through independent clones.
-    pub fn open_cloneable_reader<R: CloneableReadSeek + Send + Sync + 'static>(
+    pub fn open_cloneable_reader<R: CloneableReadSeek + Send + 'static>(
         &self,
         reader: R,
     ) -> Result<Reader, Error> {
@@ -407,14 +418,60 @@ impl Reader {
     ///
     /// Because generic readers cannot be cloned into independent handles, the
     /// native backend forces parallelism to `1` for this path.
-    pub fn open_reader<R: Read + Seek + Send + Sync + 'static>(reader: R) -> Result<Self, Error> {
+    pub fn open_reader<R: Read + Seek + Send + 'static>(reader: R) -> Result<Self, Error> {
         ReaderBuilder::new().open_reader(reader)
     }
 
     /// Exports the current random-access index to a file.
+    ///
+    /// Writes into a temporary file in the same directory first, then atomically
+    /// renames it into place via `rename(2)`. This ensures the output file is
+    /// never left in a partially written state if an error occurs mid-export.
+    ///
+    /// If `path` already exists, its permissions are preserved on Unix. If `path`
+    /// is a symlink, the resolved target is updated (not the symlink itself).
+    /// Broken symlinks, symlink loops, and other resolution failures are returned
+    /// as errors rather than silently falling back to overwriting the symlink entry.
+    ///
+    /// **Hard-link note:** because this function uses `rename(2)` internally, the
+    /// exported file receives a new inode. Any other hard links that pointed at the
+    /// previous inode will keep the old index content. This is a known trade-off of
+    /// atomic rename; in-place truncation is not used because it can leave a
+    /// partially written file on error.
     pub fn export_index<P: AsRef<Path>>(&mut self, path: P) -> Result<(), Error> {
         use std::io::Write;
-        let mut file = std::fs::File::create(path).map_err(|e| Error::Io(e.to_string()))?;
+
+        // Resolve symlinks so we write to the real target and preserve its metadata.
+        //
+        // We use symlink_metadata() (which does NOT follow symlinks) to distinguish
+        // between "path does not exist at all" (new file) and "path exists but
+        // canonicalize fails" (broken symlink, loop, bad permissions, etc.).
+        // In the latter case we propagate the error rather than silently writing
+        // to the symlink entry itself.
+        let path = path.as_ref();
+        let real_path = if path.symlink_metadata().is_ok() {
+            // Path exists (may be a symlink) — must resolve fully.
+            path.canonicalize().map_err(|e| Error::Io(e.to_string()))?
+        } else {
+            // Path does not exist yet — write to this location directly.
+            path.to_path_buf()
+        };
+        let parent = real_path.parent().unwrap_or_else(|| Path::new("."));
+
+        // Snapshot existing permissions before we replace the file.
+        #[cfg(unix)]
+        let existing_mode: Option<u32> = {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::metadata(&real_path)
+                .ok()
+                .map(|m| m.permissions().mode())
+        };
+
+        let mut temp_file = tempfile::Builder::new()
+            .prefix(".rapidgzip-index.")
+            .suffix(".tmp")
+            .tempfile_in(parent)
+            .map_err(|e| Error::Io(e.to_string()))?;
 
         unsafe extern "C" fn write_cb(
             user_data: *mut c_void,
@@ -439,7 +496,7 @@ impl Reader {
             .unwrap_or(0)
         }
 
-        let user_data = &mut file as *mut std::fs::File as *mut c_void;
+        let user_data = temp_file.as_file_mut() as *mut std::fs::File as *mut c_void;
         let status = unsafe { ffi::rgz_export_index_write(self.inner, write_cb, user_data) };
 
         if status != ffi::rgz_status_t::RGZ_STATUS_OK {
@@ -448,14 +505,29 @@ impl Reader {
                 Some(self.get_last_error()),
             ));
         }
+
+        // Restore permissions from the existing file before renaming into place.
+        #[cfg(unix)]
+        if let Some(mode) = existing_mode {
+            use std::os::unix::fs::PermissionsExt;
+            let _ =
+                std::fs::set_permissions(temp_file.path(), std::fs::Permissions::from_mode(mode));
+        }
+
+        temp_file
+            .persist(&real_path)
+            .map_err(|e| Error::Io(e.to_string()))?;
+
         Ok(())
     }
 
-    /// Imports a previously exported random-access index from a file.
-    pub fn import_index<P: AsRef<Path>>(&mut self, path: P) -> Result<(), Error> {
-        let file = std::fs::File::open(path).map_err(|e| Error::Io(e.to_string()))?;
-        let boxed_reader: Box<dyn ReadSeek> = Box::new(file);
-        let user_data = Box::into_raw(Box::new(boxed_reader)) as *mut c_void;
+    /// Imports a previously exported random-access index from an arbitrary reader.
+    ///
+    /// The reader must implement [`ReadSeek`] so the C++ library can seek
+    /// within the index during import. Use this when the index comes from a
+    /// non-file source (e.g. an HTTP range reader).
+    pub fn import_index_reader(&mut self, reader: Box<dyn ReadSeek>) -> Result<(), Error> {
+        let user_data = Box::into_raw(Box::new(reader)) as *mut c_void;
 
         let callbacks = ffi::rgz_callbacks_t {
             read: Some(cb_read),
@@ -473,6 +545,12 @@ impl Reader {
             ));
         }
         Ok(())
+    }
+
+    /// Imports a previously exported random-access index from a file.
+    pub fn import_index<P: AsRef<Path>>(&mut self, path: P) -> Result<(), Error> {
+        let file = std::fs::File::open(path).map_err(|e| Error::Io(e.to_string()))?;
+        self.import_index_reader(Box::new(file))
     }
 
     fn get_last_error(&self) -> String {
@@ -740,7 +818,9 @@ impl Seek for Reader {
 
 #[cfg(test)]
 mod tests {
-    use super::{checked_relative_seek, ffi, CloneableReadSeek, FileWrapper, IoReadMode, ReaderBuilder};
+    use super::{
+        checked_relative_seek, ffi, CloneableReadSeek, FileWrapper, IoReadMode, ReaderBuilder,
+    };
     use flate2::write::GzEncoder;
     use flate2::Compression;
     use std::io::{ErrorKind, Read, Seek, SeekFrom, Write};
@@ -842,12 +922,18 @@ mod tests {
         let config = ReaderBuilder::new()
             .io_read_mode(IoReadMode::Sequential)
             .to_ffi_config();
-        assert_eq!(config.flags & ffi::RGZ_IO_READ_MODE_MASK, ffi::RGZ_IO_READ_MODE_SEQUENTIAL);
+        assert_eq!(
+            config.flags & ffi::RGZ_IO_READ_MODE_MASK,
+            ffi::RGZ_IO_READ_MODE_SEQUENTIAL
+        );
 
         let config = ReaderBuilder::new()
             .io_read_mode(IoReadMode::Pread)
             .to_ffi_config();
-        assert_eq!(config.flags & ffi::RGZ_IO_READ_MODE_MASK, ffi::RGZ_IO_READ_MODE_PREAD);
+        assert_eq!(
+            config.flags & ffi::RGZ_IO_READ_MODE_MASK,
+            ffi::RGZ_IO_READ_MODE_PREAD
+        );
     }
 
     #[test]

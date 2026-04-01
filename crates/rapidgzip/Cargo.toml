@@ -1,6 +1,6 @@
 [package]
 name = "rapidgzip"
-version = "0.1.2"
+version = "1.2.0"
 edition = "2021"
 description = "Safe Rust wrapper for rapidgzip"
 license = "MIT OR Apache-2.0"
@@ -18,8 +18,9 @@ include = [
 ]
 
 [dependencies]
-rapidgzip-sys = { version = "0.1.2", path = "../rapidgzip-sys", optional = true }
+rapidgzip-sys = { version = "1.2.0", path = "../rapidgzip-sys", optional = true }
 thiserror = "1.0"
+tempfile = "3"
 
 [dev-dependencies]
 flate2 = "1.0"

@@ -1,5 +1,5 @@
-use flate2::Compression;
 use flate2::write::GzEncoder;
+use flate2::Compression;
 use rapidgzip::Reader;
 use std::fs;
 use std::io::{Read, Seek, SeekFrom, Write};
