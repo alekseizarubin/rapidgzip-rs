@@ -44,6 +44,13 @@ fn emit_common_system_links(target: &str, bundled_zlib: bool) {
         println!("cargo:rustc-link-lib=dylib=stdc++");
     }
 
+    if target.contains("windows-msvc") {
+        // rpmalloc calls Windows security APIs (OpenProcessToken,
+        // AdjustTokenPrivileges, LookupPrivilegeValueA) at startup to attempt
+        // large-page privilege elevation. These symbols live in advapi32.
+        println!("cargo:rustc-link-lib=advapi32");
+    }
+
     if !target.contains("windows-msvc") && !bundled_zlib {
         println!("cargo:rustc-link-lib=z");
     }
